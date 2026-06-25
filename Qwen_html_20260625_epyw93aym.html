@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Indoor Air Quality Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+    <script>
+    document.addEventListener("DOMContentLoaded", function() {
+        renderMathInElement(document.body, {
+        delimiters: [
+            {left: '$$', right: '$$', display: true},
+            {left: '$', right: '$', display: false}
+        ]
+        });
+    });
+    </script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
+        .container { max-width: 1400px; margin: 0 auto; }
+        h1 { text-align: center; color: white; margin-bottom: 30px; font-size: 2.5em; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .stat-card { background: white; border-radius: 15px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); transition: transform 0.3s ease; }
+        .stat-card:hover { transform: translateY(-5px); }
+        .stat-card h3 { color: #667eea; margin-bottom: 15px; font-size: 1.3em; border-bottom: 2px solid #667eea; padding-bottom: 10px; }
+        .stat-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; font-size: 0.95em; }
+        .stat-item:last-child { border-bottom: none; }
+        .stat-label { color: #666; font-weight: 500; }
+        .stat-value { color: #333; font-weight: bold; text-align: right; }
+        .type-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; color: white; }
+        .type-b { background-color: #4CAF50; }
+        .type-a { background-color: #FF9800; }
+        .chart-container { background: white; border-radius: 15px; padding: 20px; margin-bottom: 30px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+        .chart-wrapper { position: relative; height: 400px; }
+        .info-box { background: #f8f9fa; border-left: 4px solid #667eea; padding: 15px; margin-bottom: 20px; border-radius: 5px; }
+        .info-box h4 { color: #667eea; margin-bottom: 10px; }
+        .uncertainty-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9em; }
+        .uncertainty-table th, .uncertainty-table td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
+        .uncertainty-table th { background-color: #667eea; color: white; }
+        .loading { text-align: center; color: white; font-size: 1.5em; padding: 50px; }
+        @media (max-width: 768px) { h1 { font-size: 1.8em; } .stats-grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏠 Indoor Air Quality Dashboard</h1>
+        
+        <div id="loading" class="loading">Loading data...</div>
+        
+        <div id="content" style="display: none;">
+            <div class="info-box">
+                <h4>📊 Standard Uncertainties ($u$) per GUM & Report</h4>
+                <table class="uncertainty-table">
+                    <thead><tr><th>Sensor</th><th>Quantity</th><th>Standard Uncertainty ($u$)</th><th>Evaluation</th></tr></thead>
+                    <tbody>
+                        <tr><td>SCD41</td><td>CO₂</td><td>28.9 ppm</td><td>Type B ($50/\sqrt{3}$)</td></tr>
+                        <tr><td>SCD41</td><td>Temperature</td><td>0.46 °C</td><td>Type B ($0.8/\sqrt{3}$)</td></tr>
+                        <tr><td>SCD41</td><td>Rel. Humidity</td><td>5.20 %</td><td>Type B ($9/\sqrt{3}$)</td></tr>
+                        <tr><td>SPS30</td><td>PM1.0</td><td>2.89 µg/m³</td><td>Type B ($5/\sqrt{3}$)</td></tr>
+                        <tr><td>SPS30</td><td>PM2.5</td><td>2.89 µg/m³</td><td>Type B ($5/\sqrt{3}$)</td></tr>
+                        <tr><td>SPS30</td><td>PM4.0</td><td>14.4 µg/m³</td><td>Type B ($25/\sqrt{3}$)</td></tr>
+                        <tr><td>SPS30</td><td>PM10</td><td>14.4 µg/m³</td><td>Type B ($25/\sqrt{3}$)</td></tr>
+                        <tr><td>CCS811</td><td>eCO₂</td><td>745.5 ppm</td><td>Type A (Statistical)</td></tr>
+                        <tr><td>CCS811</td><td>TVOC</td><td>917.81 ppb</td><td>Type A (Statistical)</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="stats-grid" id="statsGrid"></div>
+            
+            <div class="chart-container">
+                <h3 style="margin-bottom: 20px; color: #333;">📈 CO₂ Levels with Uncertainty Band (±28.9 ppm)</h3>
+                <div class="chart-wrapper"><canvas id="co2Chart"></canvas></div>
+            </div>
+            <div class="chart-container">
+                <h3 style="margin-bottom: 20px; color: #333;">📈 Particulate Matter (PM2.5) with Uncertainty Band (±2.89 µg/m³)</h3>
+                <div class="chart-wrapper"><canvas id="pm25Chart"></canvas></div>
+            </div>
+            <div class="chart-container">
+                <h3 style="margin-bottom: 20px; color: #333;">📈 Temperature & Humidity with Uncertainty Bands</h3>
+                <div class="chart-wrapper"><canvas id="tempRhChart"></canvas></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // STANDARD UNCERTAINTIES (u) FROM REPORT
+        // ==========================================
+        const uncertainties = {
+            co2: { value: 28.9, unit: 'ppm', type: 'B' },
+            temp: { value: 0.46, unit: '°C', type: 'B' },
+            rh: { value: 5.20, unit: '%', type: 'B' },
+            pm1: { value: 2.89, unit: 'µg/m³', type: 'B' },
+            pm25: { value: 2.89, unit: 'µg/m³', type: 'B' },
+            pm4: { value: 14.4, unit: 'µg/m³', type: 'B' },
+            pm10: { value: 14.4, unit: 'µg/m³', type: 'B' },
+            eco2: { value: 745.5, unit: 'ppm', type: 'A' },
+            tvoc: { value: 917.81, unit: 'ppb', type: 'A' }
+        };
+
+        // ==========================================
+        // STATISTICS CALCULATION
+        // ==========================================
+        function calculateSensorStats(jsonData, options = {}) {
+            const { ignoreZeros = true } = options;
+            const sensorData = jsonData["sensor_data "] || jsonData["sensor_data"];
+            if (!sensorData) throw new Error("Could not find 'sensor_data' key.");
+
+            const valuesMap = {};
+            Object.values(sensorData).forEach(entry => {
+                Object.entries(entry).forEach(([key, value]) => {
+                    if (typeof value === 'number' && !isNaN(value)) {
+                        if (ignoreZeros && value === 0) return;
+                        const cleanKey = key.trim();
+                        if (!valuesMap[cleanKey]) valuesMap[cleanKey] = [];
+                        valuesMap[cleanKey].push(value);
+                    }
+                });
+            });
+
+            const stats = {};
+            Object.keys(valuesMap).forEach(key => {
+                const values = valuesMap[key];
+                const n = values.length;
+                if (n === 0) return;
+                const sum = values.reduce((acc, val) => acc + val, 0);
+                const mean = sum / n;
+                let squaredDiffSum = 0;
+                for (let i = 0; i < n; i++) squaredDiffSum += Math.pow(values[i] - mean, 2);
+                const stdDev = Math.sqrt(squaredDiffSum / (n - 1)); // Sample Std Dev
+
+                stats[key] = {
+                    mean: parseFloat(mean.toFixed(2)),
+                    standardDeviation: parseFloat(stdDev.toFixed(2)),
+                    count: n
+                };
+            });
+            return stats;
+        }
+
+        // ==========================================
+        // UI RENDERING
+        // ==========================================
+        function createStatCards(stats) {
+            const metrics = [
+                { key: 'co2', name: 'CO₂', unit: 'ppm' },
+                { key: 'eco2', name: 'eCO₂', unit: 'ppm' },
+                { key: 'temp', name: 'Temperature', unit: '°C' },
+                { key: 'rh', name: 'Relative Humidity', unit: '%' },
+                { key: 'pm1', name: 'PM1.0', unit: 'µg/m³' },
+                { key: 'pm25', name: 'PM2.5', unit: 'µg/m³' },
+                { key: 'pm4', name: 'PM4.0', unit: 'µg/m³' },
+                { key: 'pm10', name: 'PM10', unit: 'µg/m³' },
+                { key: 'tvoc', name: 'TVOC', unit: 'ppb' }
+            ];
+
+            const grid = document.getElementById('statsGrid');
+            grid.innerHTML = '';
+            
+            metrics.forEach(metric => {
+                const stat = stats[metric.key];
+                if (!stat) return;
+                const u = uncertainties[metric.key];
+                const typeClass = u.type === 'B' ? 'type-b' : 'type-a';
+
+                const card = document.createElement('div');
+                card.className = 'stat-card';
+                card.innerHTML = `
+                    <h3>${metric.name} (${metric.unit})</h3>
+                    <div class="stat-item">
+                        <span class="stat-label">Valid Measurements:</span>
+                        <span class="stat-value">${stat.count}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Mean ± ($u$):</span>
+                        <span class="stat-value">${stat.mean} ± ${u.value} ${metric.unit}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Evaluation:</span>
+                        <span class="stat-value"><span class="type-badge ${typeClass}">Type ${u.type}</span></span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Sample Std Dev ($s$):</span>
+                        <span class="stat-value">${stat.standardDeviation} ${metric.unit}</span>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        // ==========================================
+        // CHARTING WITH UNCERTAINTY BANDS
+        // ==========================================
+        function createChartWithUncertaintyBand(canvasId, data, datasets, options = {}) {
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            const chartDatasets = [];
+            
+            datasets.forEach(ds => {
+                const errorValue = uncertainties[ds.key] ? uncertainties[ds.key].value : 0;
+                const color = ds.borderColor;
+                // Extract RGB values for transparent fill
+                const rgbMatch = color.match(/\d+/g);
+                const rgb = rgbMatch ? rgbMatch.join(',') : '75, 192, 192';
+                
+                // 1. Upper Bound (Invisible line, used for fill)
+                chartDatasets.push({
+                    label: `${ds.label} +u`,
+                    data: ds.data.map((val, idx) => ({ x: data[idx].timestamp, y: val + errorValue })),
+                    borderColor: 'transparent',
+                    backgroundColor: `rgba(${rgb}, 0.2)`,
+                    fill: '+1', // Fills down to the next dataset (Lower Bound)
+                    pointRadius: 0,
+                    borderWidth: 0
+                });
+                
+                // 2. Lower Bound (Invisible line)
+                chartDatasets.push({
+                    label: `${ds.label} -u`,
+                    data: ds.data.map((val, idx) => ({ x: data[idx].timestamp, y: val - errorValue })),
+                    borderColor: 'transparent',
+                    backgroundColor: `rgba(${rgb}, 0.2)`,
+                    fill: false,
+                    pointRadius: 0,
+                    borderWidth: 0
+                });
+                
+                // 3. Actual Mean Line
+                chartDatasets.push({
+                    label: ds.label,
+                    data: ds.data.map((val, idx) => ({ x: data[idx].timestamp, y: val })),
+                    borderColor: color,
+                    backgroundColor: 'transparent',
+                    fill: false,
+                    pointRadius: 0,
+                    borderWidth: 2
+                });
+            });
+
+            new Chart(ctx, {
+                type: 'line',
+                data: { datasets: chartDatasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { intersect: false, mode: 'index' },
+                    plugins: {
+                        legend: { 
+                            display: true, 
+                            position: 'top',
+                            // Hide the +/- u bounds from the legend to avoid clutter
+                            filter: function(legendItem) {
+                                return !legendItem.text.includes('+u') && !legendItem.text.includes('-u');
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    if (context.dataset.label.includes('+u') || context.dataset.label.includes('-u')) return null;
+                                    const key = datasets.find(d => d.label === context.dataset.label)?.key;
+                                    const err = uncertainties[key]?.value || 0;
+                                    return `${context.dataset.label}: ${context.parsed.y.toFixed(2)} ± ${err} ${options.unit || ''}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: { unit: 'hour', displayFormats: { hour: 'HH:mm' } },
+                            title: { display: true, text: 'Time' }
+                        },
+                        y: {
+                            title: { display: true, text: options.yLabel || 'Value' },
+                            beginAtZero: options.beginAtZero || false
+                        }
+                    }
+                }
+            });
+        }
+
+        // ==========================================
+        // MAIN EXECUTION
+        // ==========================================
+        async function loadData() {
+            try {
+                const response = await fetch('indoor-air-quality-3251a-default-rtdb-export.json');
+                const jsonData = await response.json();
+                
+                // Parse and filter out the 0-value offline data
+                let data = Object.values(jsonData["sensor_data "] || jsonData["sensor_data"]).map(entry => ({
+                    timestamp: entry["timestamp "] || entry.timestamp,
+                    co2: entry["co2 "] || entry.co2,
+                    eco2: entry["eco2 "] || entry.eco2,
+                    temp: entry["temp "] || entry.temp,
+                    rh: entry["rh "] || entry.rh,
+                    pm1: entry["pm1 "] || entry.pm1,
+                    pm25: entry["pm25 "] || entry.pm25,
+                    pm4: entry["pm4 "] || entry.pm4,
+                    pm10: entry["pm10 "] || entry.pm10,
+                    tvoc: entry["tvoc "] || entry.tvoc
+                })).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+                const chartData = data.filter(entry => entry.co2 !== 0 && entry.temp !== 0);
+
+                // Calculate Stats
+                const stats = calculateSensorStats(jsonData, { ignoreZeros: true });
+
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('content').style.display = 'block';
+
+                // Render UI
+                createStatCards(stats);
+
+                // Render Charts
+                createChartWithUncertaintyBand('co2Chart', chartData, [
+                    { label: 'CO₂', key: 'co2', data: chartData.map(d => d.co2), borderColor: 'rgb(75, 192, 192)' }
+                ], { yLabel: 'CO₂ (ppm)', unit: 'ppm' });
+
+                createChartWithUncertaintyBand('pm25Chart', chartData, [
+                    { label: 'PM2.5', key: 'pm25', data: chartData.map(d => d.pm25), borderColor: 'rgb(153, 102, 255)' }
+                ], { yLabel: 'PM2.5 (µg/m³)', unit: 'µg/m³' });
+
+                createChartWithUncertaintyBand('tempRhChart', chartData, [
+                    { label: 'Temperature', key: 'temp', data: chartData.map(d => d.temp), borderColor: 'rgb(255, 99, 132)' },
+                    { label: 'Rel. Humidity', key: 'rh', data: chartData.map(d => d.rh), borderColor: 'rgb(54, 162, 235)' }
+                ], { yLabel: 'Value' });
+
+            } catch (error) {
+                console.error('Error loading data:', error);
+                document.getElementById('loading').textContent = 'Error loading data. Ensure you are running via a local server (e.g., Live Server) and the JSON file is in the same folder.';
+            }
+        }
+
+        window.addEventListener('load', loadData);
+    </script>
+</body>
+</html>
